@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Deep Research</title>
+
+    <!-- Open Props (design tokens) -->
+    <link rel="stylesheet" href="https://unpkg.com/open-props/open-props.min.css">
+
+    <!-- Highlight.js theme -->
+    <link id="highlight-theme" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ range(1, 999999) | random }}">
+
+    <!-- CDN Libraries (UMD — available as globals) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+
+    <!-- Import map for ES modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "preact": "https://esm.sh/preact@10.25.4",
+            "preact/hooks": "https://esm.sh/preact@10.25.4/hooks",
+            "htm": "https://esm.sh/htm@3.1.1"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app"></div>
+
+    <!-- Application entry point (ES module) -->
+    {% set cache_bust = range(1, 999999) | random %}
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v={{ cache_bust }}"></script>
+</body>
+</html>
