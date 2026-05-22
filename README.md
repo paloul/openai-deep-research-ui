@@ -9,6 +9,13 @@ The app calls OpenAI through the Responses API with `background=true` and `web_s
 
 The UI exposes per-model reasoning effort options from its model metadata. Current Deep Research API support is `medium` for the supported models.
 
+## Setup
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
 ## Run
 
 ```bash
