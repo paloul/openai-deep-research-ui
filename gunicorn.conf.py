@@ -3,7 +3,8 @@
 import multiprocessing
 
 # Server socket
-bind = "0.0.0.0:5080"
+# Bind to all interfaces on port 443
+bind = "0.0.0.0:443"
 backlog = 2048
 
 # Worker processes
@@ -34,6 +35,9 @@ tmp_upload_dir = None
 # SSL (uncomment and configure for HTTPS)
 # keyfile = "/path/to/keyfile"
 # certfile = "/path/to/certfile"
+# Path to the self-signed SSL certificates
+certfile = "/app/cert.pem"
+keyfile = "/app/key.pem"
 
 
 # Server hooks
