@@ -28,6 +28,10 @@ export ODR_AUTH_PASSWORD="replace-with-a-strong-password"
 export ODR_SESSION_SECRET="replace-with-a-long-random-secret"
 ```
 
+`ODR_AUTH_PASSWORD` and `ODR_SESSION_SECRET` are required when authentication is
+enabled. Generate long random values, for example with `openssl rand -hex 32`.
+Set `ODR_COOKIE_SECURE=true` when serving over HTTPS.
+
 Set `ODR_AUTH_ENABLED=false` to disable the login gate for local-only development.
 
 ## Configure

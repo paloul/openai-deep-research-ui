@@ -26,6 +26,7 @@
 
             <form class="login-form" method="post" action="{{ url_for('login') }}">
                 <input type="hidden" name="next" value="{{ next_url }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
                 <div class="form-group">
                     <label for="username">Username</label>
@@ -34,6 +35,7 @@
                         name="username"
                         type="text"
                         autocomplete="username"
+                        maxlength="256"
                         autofocus
                         required
                     >
@@ -46,6 +48,7 @@
                         name="password"
                         type="password"
                         autocomplete="current-password"
+                        maxlength="512"
                         required
                     >
                 </div>

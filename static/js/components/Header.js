@@ -1,6 +1,10 @@
 import { html } from '../htm.js';
 import { toggleTheme, toggleSidebar, toggleSettings, useStore } from '../state.js';
 
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
 export function Header() {
     const theme = useStore(s => s.theme);
     const sidebarOpen = useStore(s => s.sidebarOpen);
@@ -33,7 +37,10 @@ export function Header() {
                     >
                         ${theme === 'dark' ? '\u2600' : '\u263E'}
                     </button>
-                    <a class="btn btn-ghost btn-sm" href="/logout">Logout</a>
+                    <form method="post" action="/logout">
+                        <input type="hidden" name="csrf_token" value=${csrfToken()} />
+                        <button class="btn btn-ghost btn-sm" type="submit">Logout</button>
+                    </form>
                 </div>
             </div>
         </header>

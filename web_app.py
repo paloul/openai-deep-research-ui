@@ -7,6 +7,9 @@ import json
 import tempfile
 import time
 import hmac
+import hashlib
+import secrets
+from urllib.parse import urlsplit
 from pathlib import Path
 from queue import Queue, Empty
 
@@ -42,17 +45,50 @@ from config import load_config, save_config, _deep_merge
 load_dotenv(override=True)
 
 app = Flask(__name__, template_folder="templates")
-app.secret_key = os.getenv(
-    "ODR_SESSION_SECRET",
-    os.getenv("SECRET_KEY", "open-deep-research-dev-secret-change-me"),
-)
+
+
+def _required_secret_key():
+    auth_enabled = os.getenv("ODR_AUTH_ENABLED", "true").lower() not in (
+        "false",
+        "0",
+        "no",
+    )
+    secret_key = os.getenv("ODR_SESSION_SECRET") or os.getenv("SECRET_KEY")
+    if not secret_key:
+        if not auth_enabled:
+            return secrets.token_urlsafe(32)
+        raise RuntimeError(
+            "ODR_SESSION_SECRET is required when authentication is enabled. "
+            "Set it to a long random value."
+        )
+    if not auth_enabled:
+        return secret_key
+    if secret_key in (
+        "open-deep-research-dev-secret-change-me",
+        "change_me_to_a_long_random_secret",
+        "BeyondArtificialInteligence",
+    ):
+        raise RuntimeError("ODR_SESSION_SECRET must not use a default or example value.")
+    if len(secret_key) < 32:
+        raise RuntimeError("ODR_SESSION_SECRET must be at least 32 characters long.")
+    return secret_key
+
+
+app.secret_key = _required_secret_key()
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("ODR_COOKIE_SECURE", "false").lower()
     in ("true", "1", "yes"),
 )
-CORS(app)
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("ODR_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if cors_origins:
+    CORS(app, origins=cors_origins, supports_credentials=True)
 
 DEEP_RESEARCH_MODEL_OPTIONS = [
     {
@@ -86,6 +122,13 @@ ALLOWED_ATTACHMENT_MIME_TYPES = {
     "application/json",
 }
 AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
+LOGIN_FAILURE_WINDOW_SECONDS = int(os.getenv("ODR_LOGIN_FAILURE_WINDOW_SECONDS", "300"))
+LOGIN_MAX_FAILURES = int(os.getenv("ODR_LOGIN_MAX_FAILURES", "5"))
+LOGIN_MAX_BODY_BYTES = int(os.getenv("ODR_LOGIN_MAX_BODY_BYTES", "4096"))
+LOGIN_MAX_USERNAME_LENGTH = int(os.getenv("ODR_LOGIN_MAX_USERNAME_LENGTH", "256"))
+LOGIN_MAX_PASSWORD_LENGTH = int(os.getenv("ODR_LOGIN_MAX_PASSWORD_LENGTH", "512"))
+LOGIN_FAILURES: dict[str, list[float]] = {}
+login_failures_lock = threading.Lock()
 
 # Initialize session database (graceful degradation if it fails)
 try:
@@ -143,14 +186,30 @@ def _auth_enabled():
 
 
 def _auth_credentials():
-    return (
-        os.getenv("ODR_AUTH_USERNAME", "admin"),
-        os.getenv("ODR_AUTH_PASSWORD", os.getenv("CONFIG_ADMIN_PASSWORD", "change_me")),
-    )
+    username = os.getenv("ODR_AUTH_USERNAME")
+    password = os.getenv("ODR_AUTH_PASSWORD") or os.getenv("CONFIG_ADMIN_PASSWORD")
+    weak_passwords = {"", "password", "change_me", "change_me_to_a_secure_password"}
+    if not username or not password:
+        raise RuntimeError("ODR_AUTH_USERNAME and ODR_AUTH_PASSWORD must be set.")
+    if password in weak_passwords or len(password) < 12:
+        raise RuntimeError("ODR_AUTH_PASSWORD must be a strong non-default password.")
+    return (username, password)
+
+
+if _auth_enabled():
+    _auth_credentials()
 
 
 def _safe_next_url(next_url):
-    if next_url and next_url.startswith("/") and not next_url.startswith("//"):
+    if not next_url or any(ch in next_url for ch in ("\r", "\n", "\x00")):
+        return url_for("index")
+    parsed = urlsplit(next_url)
+    if (
+        parsed.scheme == ""
+        and parsed.netloc == ""
+        and parsed.path.startswith("/")
+        and not parsed.path.startswith("//")
+    ):
         return next_url
     return url_for("index")
 
@@ -160,6 +219,59 @@ def _wants_json_response():
         request.accept_mimetypes["application/json"]
         > request.accept_mimetypes["text/html"]
     )
+
+
+def _login_failure_key(username):
+    username_digest = hashlib.sha256(username.encode("utf-8")).hexdigest()
+    return f"{request.remote_addr or 'unknown'}:{username_digest}"
+
+
+def _bounded_form_value(name, max_length):
+    value = request.form.get(name, "")
+    if len(value) > max_length:
+        raise ValueError(f"{name} is too long.")
+    return value
+
+
+def _login_is_rate_limited(username):
+    key = _login_failure_key(username)
+    cutoff = time.time() - LOGIN_FAILURE_WINDOW_SECONDS
+    with login_failures_lock:
+        failures = [ts for ts in LOGIN_FAILURES.get(key, []) if ts >= cutoff]
+        LOGIN_FAILURES[key] = failures
+        return len(failures) >= LOGIN_MAX_FAILURES
+
+
+def _record_login_failure(username):
+    key = _login_failure_key(username)
+    cutoff = time.time() - LOGIN_FAILURE_WINDOW_SECONDS
+    with login_failures_lock:
+        failures = [ts for ts in LOGIN_FAILURES.get(key, []) if ts >= cutoff]
+        failures.append(time.time())
+        LOGIN_FAILURES[key] = failures
+
+
+def _clear_login_failures(username):
+    with login_failures_lock:
+        LOGIN_FAILURES.pop(_login_failure_key(username), None)
+
+
+def _csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def _valid_csrf_token(token):
+    expected = session.get("csrf_token")
+    return bool(expected and token and hmac.compare_digest(token, expected))
+
+
+@app.context_processor
+def inject_csrf_token():
+    return {"csrf_token": _csrf_token}
 
 
 @app.before_request
@@ -185,23 +297,50 @@ def login():
     next_url = _safe_next_url(request.values.get("next"))
 
     if request.method == "POST":
-        expected_username, expected_password = _auth_credentials()
-        username = request.form.get("username", "")
-        password = request.form.get("password", "")
-        if hmac.compare_digest(username, expected_username) and hmac.compare_digest(
-            password, expected_password
-        ):
-            session.clear()
-            session["authenticated"] = True
-            session["username"] = username
-            return redirect(next_url)
-        error = "Invalid username or password."
+        if request.content_length and request.content_length > LOGIN_MAX_BODY_BYTES:
+            return "Request too large", 413
+        try:
+            username = _bounded_form_value("username", LOGIN_MAX_USERNAME_LENGTH)
+            password = _bounded_form_value("password", LOGIN_MAX_PASSWORD_LENGTH)
+        except ValueError:
+            error = "Invalid username or password."
+            return render_template(
+                "login.html",
+                error=error,
+                next_url=next_url,
+                csrf_token=_csrf_token(),
+            )
+        if not _valid_csrf_token(request.form.get("csrf_token", "")):
+            error = "Invalid sign-in request. Please try again."
+        elif _login_is_rate_limited(username):
+            error = "Too many failed attempts. Please try again later."
+        else:
+            expected_username, expected_password = _auth_credentials()
+            valid_login = hmac.compare_digest(
+                username, expected_username
+            ) and hmac.compare_digest(password, expected_password)
+            if valid_login:
+                _clear_login_failures(username)
+                next_csrf_token = secrets.token_urlsafe(32)
+                session.clear()
+                session["csrf_token"] = next_csrf_token
+                session["authenticated"] = True
+                session["username"] = username
+                return redirect(next_url)
+            _record_login_failure(username)
+            error = "Invalid username or password."
 
-    return render_template("login.html", error=error, next_url=next_url)
+    return render_template(
+        "login.html", error=error, next_url=next_url, csrf_token=_csrf_token()
+    )
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
+    if not _auth_enabled():
+        return redirect(url_for("login"))
+    if not _valid_csrf_token(request.form.get("csrf_token", "")):
+        return redirect(url_for("index"))
     session.clear()
     return redirect(url_for("login"))
 
@@ -973,7 +1112,11 @@ def config_meta():
 def _check_admin_password(password):
     """Validate admin password against env var."""
     admin_password = os.getenv("CONFIG_ADMIN_PASSWORD", "")
-    return admin_password and password == admin_password
+    return bool(
+        admin_password
+        and password
+        and hmac.compare_digest(password, admin_password)
+    )
 
 
 @app.route("/api/config/verify", methods=["POST"])

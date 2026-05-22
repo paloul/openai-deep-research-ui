@@ -1547,6 +1547,10 @@ footer p {
     gap: var(--sp-2);
 }
 
+.header-actions form {
+    margin: 0;
+}
+
 .header-icon-btn {
     font-size: var(--fs-lg);
     width: 32px;
