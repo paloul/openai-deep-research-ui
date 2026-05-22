@@ -10,7 +10,7 @@ backlog = 2048
 workers = multiprocessing.cpu_count() * 2 + 1
 worker_class = "sync"
 worker_connections = 1000
-timeout = 0  # Disable timeout for long-running agent tasks (tasks can run indefinitely)
+timeout = 0  # Disable timeout for long-running Deep Research requests
 keepalive = 2
 graceful_timeout = 30  # Give workers 30s to finish when shutting down
 

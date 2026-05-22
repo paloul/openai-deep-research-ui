@@ -93,6 +93,65 @@ body {
     min-height: 100vh;
 }
 
+/* ===== Login ===== */
+.login-page {
+    display: grid;
+    place-items: center;
+    padding: var(--sp-4);
+}
+
+.login-shell {
+    width: min(100%, 420px);
+}
+
+.login-panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--rad-lg);
+    padding: var(--sp-5);
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--sp-4);
+    margin-bottom: var(--sp-4);
+}
+
+.login-brand h1 {
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    color: var(--text-0);
+}
+
+.login-brand-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+}
+
+.login-error {
+    color: var(--error);
+    background: var(--error-dim);
+    border: 1px solid var(--error-border);
+    border-radius: var(--rad);
+    padding: var(--sp-2) var(--sp-3);
+    margin-bottom: var(--sp-4);
+    font-size: var(--fs-sm);
+}
+
+.login-submit {
+    justify-content: center;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
@@ -258,7 +317,9 @@ header {
 }
 
 select,
-textarea {
+textarea,
+input[type="text"],
+input[type="password"] {
     width: 100%;
     background: var(--surface-2);
     border: 1px solid var(--border);
@@ -273,13 +334,111 @@ textarea {
 }
 
 select:focus,
-textarea:focus {
+textarea:focus,
+input[type="text"]:focus,
+input[type="password"]:focus {
     border-color: var(--accent-border);
 }
 
 textarea {
     min-height: 80px;
     line-height: 1.5;
+}
+
+.attachment-input {
+    display: none;
+}
+
+.attachment-dropzone {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--rad);
+    padding: var(--sp-2);
+}
+
+.attachment-add-btn {
+    flex: 0 0 auto;
+}
+
+.attachment-hint {
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+}
+
+.attachment-error {
+    margin-top: var(--sp-1);
+    color: var(--error);
+    font-size: var(--fs-xs);
+}
+
+.attachment-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin-top: var(--sp-2);
+}
+
+.attachment-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--rad);
+    padding: var(--sp-2);
+}
+
+.attachment-meta {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+}
+
+.attachment-name {
+    color: var(--text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-size {
+    flex: 0 0 auto;
+    color: var(--text-2);
+    font-size: var(--fs-xs);
+}
+
+.attachment-remove {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--rad);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.attachment-remove:hover {
+    color: var(--error);
+    border-color: var(--error-border);
+    background: var(--error-dim);
+}
+
+.attachment-remove:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.attachment-remove:disabled:hover {
+    color: var(--text-2);
+    border-color: var(--border);
+    background: transparent;
 }
 
 select {
@@ -969,9 +1128,6 @@ select {
 }
 
 /* Type-specific left border accents */
-.collapsible.code_block {
-    border-left: 2px solid var(--accent-border);
-}
 .collapsible.observation {
     border-left: 2px solid rgba(68, 136, 255, 0.3);
 }
@@ -980,9 +1136,6 @@ select {
 }
 .collapsible.final_answer {
     border-left: 2px solid var(--accent);
-}
-.collapsible.code_execution {
-    border-left: 2px solid rgba(170, 136, 255, 0.3);
 }
 
 /* ===== Tool Call ===== */
@@ -1085,6 +1238,7 @@ select {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--sp-3);
     padding: var(--sp-2) var(--sp-4);
     border-bottom: 1px solid var(--accent-border);
 }
@@ -1095,6 +1249,18 @@ select {
     color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 0.06em;
+}
+
+.answer-box-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-1);
+    flex-wrap: wrap;
+}
+
+.answer-box-actions .btn-copy {
+    margin-left: 0;
 }
 
 .answer-box-content {

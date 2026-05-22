@@ -10,11 +10,9 @@ import { Collapsible } from './Collapsible.js';
 const FILTERS = [
     { id: 'all', label: 'All' },
     { id: 'step', label: 'Steps' },
-    { id: 'tool_call', label: 'Tools' },
     { id: 'plan', label: 'Plans' },
-    { id: 'code_block', label: 'Code' },
     { id: 'observation', label: 'Results' },
-    { id: 'final_answer', label: 'Answer' },
+    { id: 'final_answer', label: 'Answers' },
     { id: 'error', label: 'Errors' },
 ];
 
@@ -61,8 +59,6 @@ export function OutputPanel() {
         if (filter === 'final_answer' && node.type === 'final_answer') return true;
         if (filter === 'error' && node.type === 'error') return true;
         if (node.type === 'step' && node.data) {
-            if (filter === 'tool_call' && (node.data.tool_calls || []).length > 0) return true;
-            if (filter === 'code_block' && node.data.code_action) return true;
             if (filter === 'observation' && node.data.observations) return true;
         }
         return false;

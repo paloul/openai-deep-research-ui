@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · Open Deep Research</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/open-props/open-props.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ range(1, 999999) | random }}">
+</head>
+<body class="login-page">
+    <main class="login-shell">
+        <section class="login-panel">
+            <div class="login-brand">
+                <h1>open deep research</h1>
+                <div class="login-brand-actions">
+                    <span class="header-tag">OpenAI</span>
+                    <button
+                        id="loginThemeToggle"
+                        class="theme-toggle"
+                        type="button"
+                        aria-label="Toggle theme"
+                    >☀</button>
+                </div>
+            </div>
+
+            <form class="login-form" method="post" action="{{ url_for('login') }}">
+                <input type="hidden" name="next" value="{{ next_url }}">
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        autocomplete="username"
+                        autofocus
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+
+                {% if error %}
+                    <div class="login-error">{{ error }}</div>
+                {% endif %}
+
+                <button class="btn btn-submit login-submit" type="submit">Sign in</button>
+            </form>
+        </section>
+    </main>
+    <script>
+        (function () {
+            const themeKey = 'odr-theme';
+            const root = document.documentElement;
+            const button = document.getElementById('loginThemeToggle');
+
+            function applyTheme(theme) {
+                const next = theme === 'light' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                if (button) button.textContent = next === 'dark' ? '☀' : '☾';
+            }
+
+            applyTheme(localStorage.getItem(themeKey) || 'dark');
+
+            if (button) {
+                button.addEventListener('click', function () {
+                    const current = root.getAttribute('data-theme') || 'dark';
+                    const next = current === 'dark' ? 'light' : 'dark';
+                    localStorage.setItem(themeKey, next);
+                    applyTheme(next);
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

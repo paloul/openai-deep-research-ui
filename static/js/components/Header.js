@@ -17,7 +17,7 @@ export function Header() {
                         >\u2630</button>
                     `}
                     <h1>open deep research</h1>
-                    <span class="header-tag">agent</span>
+                    <span class="header-tag">OpenAI</span>
                 </div>
                 <div class="header-actions">
                     <button
@@ -33,6 +33,7 @@ export function Header() {
                     >
                         ${theme === 'dark' ? '\u2600' : '\u263E'}
                     </button>
+                    <a class="btn btn-ghost btn-sm" href="/logout">Logout</a>
                 </div>
             </div>
         </header>

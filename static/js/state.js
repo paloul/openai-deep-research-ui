@@ -23,7 +23,10 @@ const state = {
     discoveringModels: false,
     discoverErrors: [],
     selectedModel: '',
+    selectedReasoningEffort: 'medium',
     question: '',
+    attachments: [],
+    attachmentError: '',
     finalAnswer: null,
     totalStartTime: null,
     runMode: localStorage.getItem('odr-run-mode') || 'background',
@@ -42,6 +45,18 @@ const state = {
 };
 
 const listeners = new Set();
+const MAX_ATTACHMENT_FILES = 5;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_EXTENSIONS = ['.txt', '.md', '.csv', '.json', '.pdf', '.doc', '.docx'];
+const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/csv',
+    'text/markdown',
+    'text/plain',
+    'application/json',
+]);
 
 function notify() {
     listeners.forEach(fn => fn());
@@ -104,102 +119,30 @@ export function getStepTree() {
     return cachedTree;
 }
 
-/**
- * Build a nested tree from flat SSE events.
- */
 function buildStepTree(eventList) {
     const tree = [];
-    let pendingNode = null;
-    let currentAgentName = null;
 
     for (let i = 0; i < eventList.length; i++) {
         const evt = eventList[i];
 
         switch (evt.type) {
-            case 'code_running': {
-                const code = evt.code || '';
-                const agentMatch = code.match(/(\w+_agent)\s*\(/);
-
-                if (agentMatch) {
-                    pendingNode = {
-                        type: 'pending',
-                        label: `Calling ${agentMatch[1]}`,
-                        agentCallName: agentMatch[1],
-                        children: [],
-                        subAgents: {},
-                        timestamp: Date.now(),
-                    };
-                    tree.push(pendingNode);
-                    currentAgentName = null;
-                }
-                break;
-            }
-
             case 'action_step': {
-                const agentName = evt.agent_name || null;
-                const isCodeAgent = !!evt.code_action;
-                const callsSubAgent = isCodeAgent &&
-                    /\w+_agent\s*\(/.test(evt.code_action || '');
-
-                if (pendingNode && !agentName && callsSubAgent) {
-                    pendingNode.type = 'step';
-                    pendingNode.data = evt;
-                    pendingNode.label = null;
-                    pendingNode = null;
-                    currentAgentName = null;
-                } else if (pendingNode && agentName) {
-                    if (!pendingNode.subAgents[agentName]) {
-                        pendingNode.subAgents[agentName] = { events: [] };
-                    }
-                    pendingNode.subAgents[agentName].events.push({
-                        type: 'step',
-                        data: evt,
-                        children: [],
-                        subAgents: {},
-                    });
-                    currentAgentName = agentName;
-                } else {
-                    const node = {
-                        type: 'step',
-                        data: evt,
-                        children: [],
-                        subAgents: {},
-                    };
-                    tree.push(node);
-                    currentAgentName = agentName;
-                }
+                tree.push({ type: 'step', data: evt });
                 break;
             }
 
             case 'planning_step': {
-                const agentName = evt.agent_name || null;
-                const node = { type: 'plan', data: evt };
-
-                if (pendingNode && agentName) {
-                    if (!pendingNode.subAgents[agentName]) {
-                        pendingNode.subAgents[agentName] = { events: [] };
-                    }
-                    pendingNode.subAgents[agentName].events.push(node);
-                    currentAgentName = agentName;
-                } else {
-                    tree.push(node);
-                }
+                tree.push({ type: 'plan', data: evt });
                 break;
             }
 
             case 'final_answer': {
-                const agentName = evt.agent_name || null;
-                const node = { type: 'final_answer', data: evt };
+                tree.push({ type: 'final_answer', data: evt });
+                break;
+            }
 
-                if (pendingNode && agentName) {
-                    if (!pendingNode.subAgents[agentName]) {
-                        pendingNode.subAgents[agentName] = { events: [] };
-                    }
-                    pendingNode.subAgents[agentName].events.push(node);
-                    currentAgentName = null;
-                } else {
-                    tree.push(node);
-                }
+            case 'answer_delta':
+            case 'answer_snapshot': {
                 break;
             }
 
@@ -207,15 +150,7 @@ function buildStepTree(eventList) {
             case 'error':
             case 'message':
             default: {
-                const node = { type: evt.type || 'message', data: evt };
-                if (pendingNode && currentAgentName) {
-                    if (!pendingNode.subAgents[currentAgentName]) {
-                        pendingNode.subAgents[currentAgentName] = { events: [] };
-                    }
-                    pendingNode.subAgents[currentAgentName].events.push(node);
-                } else {
-                    tree.push(node);
-                }
+                tree.push({ type: evt.type || 'message', data: evt });
                 break;
             }
         }
@@ -228,6 +163,120 @@ function buildStepTree(eventList) {
 
 export function addEvent(evt) {
     setState({ events: [...state.events, evt] });
+}
+
+function applyStreamEvent(evt, target = null) {
+    if (evt.type === 'answer_delta') {
+        const nextAnswer = (target ? target.finalAnswer : state.finalAnswer) || '';
+        const updatedAnswer = nextAnswer + (evt.delta || '');
+        if (target) {
+            target.finalAnswer = updatedAnswer;
+        } else {
+            setState({ finalAnswer: updatedAnswer });
+        }
+        return;
+    }
+
+    if (evt.type === 'answer_snapshot') {
+        const updatedAnswer = evt.content || '';
+        if (target) {
+            target.finalAnswer = updatedAnswer;
+        } else {
+            setState({ finalAnswer: updatedAnswer });
+        }
+        return;
+    }
+
+    if (target) {
+        target.events.push(evt);
+        if (evt.type === 'error') target.hasError = true;
+        if (evt.type === 'final_answer') {
+            target.finalAnswer = evt.output || evt.content;
+        }
+        return;
+    }
+
+    addEvent(evt);
+    if (evt.type === 'final_answer') {
+        setState({ finalAnswer: evt.output || evt.content });
+    }
+}
+
+function answerFromEvents(events, fallback = null) {
+    let answer = fallback || null;
+    for (const evt of events || []) {
+        if (evt.type === 'answer_delta') {
+            answer = (answer || '') + (evt.delta || '');
+        } else if (evt.type === 'answer_snapshot') {
+            answer = evt.content || answer;
+        } else if (evt.type === 'final_answer') {
+            answer = evt.output || evt.content || answer;
+        }
+    }
+    return answer;
+}
+
+function isAllowedAttachment(file) {
+    const name = (file.name || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+    const mime = (file.type || '').toLowerCase();
+    return ALLOWED_ATTACHMENT_EXTENSIONS.includes(ext)
+        || ALLOWED_ATTACHMENT_MIME_TYPES.has(mime)
+        || mime.startsWith('text/');
+}
+
+export function addAttachments(fileList) {
+    const incoming = Array.from(fileList || []);
+    const next = [...state.attachments];
+
+    for (const file of incoming) {
+        if (next.length >= MAX_ATTACHMENT_FILES) {
+            setState({ attachmentError: `Attach up to ${MAX_ATTACHMENT_FILES} files.` });
+            return;
+        }
+        if (!isAllowedAttachment(file)) {
+            setState({ attachmentError: `${file.name} is not a supported file type.` });
+            continue;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+            setState({ attachmentError: `${file.name} exceeds 25 MB.` });
+            continue;
+        }
+        const duplicate = next.some(
+            existing => existing.name === file.name
+                && existing.size === file.size
+                && existing.lastModified === file.lastModified
+        );
+        if (!duplicate) next.push(file);
+    }
+
+    setState({ attachments: next, attachmentError: '' });
+}
+
+export function removeAttachment(index) {
+    setState({
+        attachments: state.attachments.filter((_, i) => i !== index),
+        attachmentError: '',
+    });
+}
+
+function buildRunRequestBody(question, model, mode, clientConfig) {
+    if (state.attachments.length === 0) {
+        return {
+            body: JSON.stringify({ question, model_id: model, run_mode: mode, client_config: clientConfig }),
+            headers: { 'Content-Type': 'application/json' },
+        };
+    }
+
+    const formData = new FormData();
+    formData.append('question', question);
+    formData.append('model_id', model);
+    formData.append('run_mode', mode);
+    formData.append('client_config', JSON.stringify(clientConfig));
+    for (const file of state.attachments) {
+        formData.append('attachments', file, file.name);
+    }
+    return { body: formData, headers: {} };
 }
 
 export function resetView() {
@@ -254,6 +303,39 @@ let currentReader = null;
 // Per-session event buffers for auto-kill mode (multiple simultaneous SSE connections)
 // { sessionId: { events: [], reader, question, model, finalAnswer, hasError, startTime } }
 const liveSessions = {};
+
+function modelInfo(modelId, modelList = null) {
+    const models = modelList || [...state.discoveredModels, ...state.models];
+    return models.find(m => m.id === modelId) || null;
+}
+
+export function getReasoningEfforts(modelId = state.selectedModel, modelList = null) {
+    const info = modelInfo(modelId, modelList);
+    return info?.reasoning_efforts || ['medium'];
+}
+
+export function defaultReasoningEffort(modelId = state.selectedModel, modelList = null) {
+    const info = modelInfo(modelId, modelList);
+    const allowed = getReasoningEfforts(modelId, modelList);
+    return info?.default_reasoning_effort || allowed[0] || 'medium';
+}
+
+export function setSelectedModel(modelId) {
+    const allowed = getReasoningEfforts(modelId);
+    const effort = allowed.includes(state.selectedReasoningEffort)
+        ? state.selectedReasoningEffort
+        : defaultReasoningEffort(modelId);
+    setState({ selectedModel: modelId, selectedReasoningEffort: effort });
+}
+
+export function setSelectedReasoningEffort(effort) {
+    const allowed = getReasoningEfforts();
+    setState({
+        selectedReasoningEffort: allowed.includes(effort)
+            ? effort
+            : defaultReasoningEffort(),
+    });
+}
 
 /** Check if a session has an active SSE connection in liveSessions */
 export function isSessionLive(sessionId) {
@@ -290,15 +372,27 @@ export async function loadModels() {
         const response = await fetch('/api/models');
         if (!response.ok) throw new Error('Failed to load models');
         const data = await response.json();
+        const nextModel = data.length > 0 && !state.selectedModel ? data[0].id : state.selectedModel;
+        const nextEffort = getReasoningEfforts(nextModel, data).includes(state.selectedReasoningEffort)
+            ? state.selectedReasoningEffort
+            : defaultReasoningEffort(nextModel, data);
         setState({
             models: data,
-            selectedModel: data.length > 0 && !state.selectedModel ? data[0].id : state.selectedModel,
+            selectedModel: nextModel,
+            selectedReasoningEffort: nextEffort,
         });
     } catch (e) {
         console.error('Failed to load models:', e);
         setState({
-            models: [{ id: 'o1', name: 'OpenAI o1', description: 'Advanced reasoning' }],
-            selectedModel: state.selectedModel || 'o1',
+            models: [{
+                id: 'o3-deep-research',
+                name: 'OpenAI o3 Deep Research',
+                description: 'OpenAI Deep Research',
+                reasoning_efforts: ['medium'],
+                default_reasoning_effort: 'medium',
+            }],
+            selectedModel: state.selectedModel || 'o3-deep-research',
+            selectedReasoningEffort: 'medium',
         });
     }
 }
@@ -328,7 +422,17 @@ export async function discoverModels() {
         });
         // If nothing was selected yet, pick first discovered
         if (!state.selectedModel && discovered.length > 0) {
-            setState({ selectedModel: discovered[0].id });
+            setState({
+                selectedModel: discovered[0].id,
+                selectedReasoningEffort: discovered[0].default_reasoning_effort || 'medium',
+            });
+        } else if (state.selectedModel) {
+            const combined = [...discovered, ...state.models];
+            if (!getReasoningEfforts(state.selectedModel, combined).includes(state.selectedReasoningEffort)) {
+                setState({
+                    selectedReasoningEffort: defaultReasoningEffort(state.selectedModel, combined),
+                });
+            }
         }
     } catch (e) {
         console.error('Model discovery failed:', e);
@@ -428,11 +532,8 @@ async function readBlockingSSEStream(response) {
                     });
                     shouldBreak = true;
                 } else {
-                    addEvent(jsonData);
+                    applyStreamEvent(jsonData);
                     if (jsonData.type === 'error') hasError = true;
-                    if (jsonData.type === 'final_answer' && !jsonData.agent_name) {
-                        setState({ finalAnswer: jsonData.output || jsonData.content });
-                    }
                 }
             });
             if (shouldBreak) break;
@@ -472,11 +573,7 @@ function startAutoKillStream(sessionId, reader) {
                     } else if (jsonData.done) {
                         shouldBreak = true;
                     } else {
-                        session.events.push(jsonData);
-                        if (jsonData.type === 'error') session.hasError = true;
-                        if (jsonData.type === 'final_answer' && !jsonData.agent_name) {
-                            session.finalAnswer = jsonData.output || jsonData.content;
-                        }
+                        applyStreamEvent(jsonData, session);
                         // If this session is currently viewed, update the display
                         if (state.activeSessionId === sessionId) {
                             cachedEvents = null;
@@ -541,18 +638,21 @@ export async function startStream() {
     const mode = state.runMode;
 
     const clientConfig = getClientConfig();
+    if (!clientConfig.model) clientConfig.model = {};
+    clientConfig.model.reasoning_effort = state.selectedReasoningEffort || defaultReasoningEffort(model);
 
     if (mode === 'auto-kill') {
         // Auto-kill: fire-and-forget, don't block UI
         setState({
-            status: { message: 'Starting agent...', type: 'loading' },
+            status: { message: 'Starting Deep Research...', type: 'loading' },
         });
 
         try {
+            const requestBody = buildRunRequestBody(q, model, mode, clientConfig);
             const response = await fetch('/api/run/stream', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question: q, model_id: model, run_mode: mode, client_config: clientConfig }),
+                headers: requestBody.headers,
+                body: requestBody.body,
             });
 
             if (!response.ok) {
@@ -602,6 +702,7 @@ export async function startStream() {
                 events: [],
                 question: q,
                 selectedModel: model,
+                selectedReasoningEffort: clientConfig.model.reasoning_effort,
                 sessionId: sessionId,
                 activeSessionId: sessionId,
                 viewingHistory: false,
@@ -610,7 +711,7 @@ export async function startStream() {
                 finalAnswer: null,
                 totalStartTime: Date.now(),
                 viewingLiveSession: true,
-                status: { message: 'Running agent...', type: 'loading' },
+                status: { message: 'Running Deep Research...', type: 'loading' },
             });
 
             loadSessions();
@@ -623,10 +724,13 @@ export async function startStream() {
                 }
             });
             for (const evt of remainingEvents) {
-                liveSessions[sessionId].events.push(evt);
+                applyStreamEvent(evt, liveSessions[sessionId]);
             }
             if (remainingEvents.length > 0 && state.activeSessionId === sessionId) {
-                setState({ events: [...liveSessions[sessionId].events] });
+                setState({
+                    events: [...liveSessions[sessionId].events],
+                    finalAnswer: liveSessions[sessionId].finalAnswer,
+                });
             }
 
             // Continue reading in background
@@ -643,20 +747,22 @@ export async function startStream() {
     setState({
         question: q,
         selectedModel: model,
+        selectedReasoningEffort: clientConfig.model.reasoning_effort,
         runMode: mode,
         isRunning: mode === 'live',  // Only live mode locks the UI
         totalStartTime: Date.now(),
-        status: { message: 'Running agent...', type: 'loading' },
+        status: { message: 'Running Deep Research...', type: 'loading' },
         viewingHistory: false,
         viewingLiveSession: true,
         activeSessionId: null,
     });
 
     try {
+        const requestBody = buildRunRequestBody(q, model, mode, clientConfig);
         const response = await fetch('/api/run/stream', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: q, model_id: model, run_mode: mode, client_config: clientConfig }),
+            headers: requestBody.headers,
+            body: requestBody.body,
         });
 
         if (!response.ok) {
@@ -696,7 +802,7 @@ export async function startStream() {
 }
 
 /**
- * Stop a specific session's agent. Works for all modes.
+ * Stop a specific Deep Research session. Works for all modes.
  */
 export async function stopSession(sessionId) {
     if (!sessionId) sessionId = state.activeSessionId || state.sessionId;
@@ -726,7 +832,7 @@ export async function stopSession(sessionId) {
 
     // Update UI if viewing this session
     if (state.activeSessionId === sessionId || state.sessionId === sessionId) {
-        addEvent({ type: 'error', content: 'Agent execution cancelled by user' });
+        addEvent({ type: 'error', content: 'Deep Research run cancelled by user' });
         setState({
             status: { message: 'Stopped by user', type: 'error' },
             isRunning: false,
@@ -743,7 +849,7 @@ export async function stopStream() {
 }
 
 /**
- * Disconnect from a background persistent session's /live stream without killing the agent.
+ * Disconnect from a background persistent session's /live stream without cancelling the response.
  */
 function disconnectLiveStream() {
     if (currentReader) {
@@ -776,7 +882,7 @@ function switchToLiveSession(sessionId) {
         totalStartTime: session.startTime,
         viewingLiveSession: !!session.reader,
         status: session.reader
-            ? { message: 'Running agent...', type: 'loading' }
+            ? { message: 'Running Deep Research...', type: 'loading' }
             : {
                 message: session.hasError ? 'Completed with errors' : 'Completed successfully',
                 type: session.hasError ? 'error' : 'success',
@@ -828,7 +934,7 @@ export async function loadSession(sessionId) {
     // In live mode while running, block session switching (UI should prevent this too)
     if (state.isRunning && state.runMode === 'live') return;
 
-    // If currently viewing a background persistent /live stream, disconnect viewer (agent keeps running)
+    // If currently viewing a background persistent /live stream, disconnect viewer (response keeps running)
     if (currentReader) {
         disconnectLiveStream();
     }
@@ -845,20 +951,22 @@ export async function loadSession(sessionId) {
 
         // If session is still running (background persistent), reconnect via /live
         if (session.status === 'running') {
-            const eventCount = (session.events || []).length;
+            const events = session.events || [];
+            const eventCount = events.length;
             setState({
-                events: session.events || [],
+                events: events,
                 question: session.question,
                 selectedModel: session.model_id,
+                selectedReasoningEffort: defaultReasoningEffort(session.model_id),
                 sessionId: sessionId,
                 activeSessionId: sessionId,
                 viewingHistory: false,
                 isRunning: false,
                 isStopped: false,
-                finalAnswer: null,
+                finalAnswer: answerFromEvents(events),
                 totalStartTime: Date.now(),
                 viewingLiveSession: true,
-                status: { message: 'Reconnected to running agent...', type: 'loading' },
+                status: { message: 'Reconnected to running Deep Research...', type: 'loading' },
             });
 
             try {
@@ -875,16 +983,18 @@ export async function loadSession(sessionId) {
         }
 
         // Not running — show history
+        const events = session.events || [];
         setState({
-            events: session.events || [],
+            events: events,
             question: session.question,
             selectedModel: session.model_id,
+            selectedReasoningEffort: defaultReasoningEffort(session.model_id),
             sessionId: sessionId,
             activeSessionId: sessionId,
             viewingHistory: true,
             isRunning: false,
             isStopped: false,
-            finalAnswer: session.final_answer || null,
+            finalAnswer: answerFromEvents(events, session.final_answer || null),
             viewingLiveSession: false,
             status: {
                 message: `Session from ${new Date(session.created_at).toLocaleString()} (${session.status})`,
@@ -915,7 +1025,13 @@ export async function deleteSession(sessionId) {
 
         if (state.activeSessionId === sessionId) {
             resetView();
-            setState({ question: '', activeSessionId: null, viewingHistory: false });
+            setState({
+                question: '',
+                attachments: [],
+                attachmentError: '',
+                activeSessionId: null,
+                viewingHistory: false,
+            });
         }
     } catch (e) {
         console.error('Failed to delete session:', e);
@@ -926,14 +1042,20 @@ export async function newSession() {
     // In live mode while running, block new session (UI should prevent this too)
     if (state.isRunning && state.runMode === 'live') return;
 
-    // If currently viewing a background /live stream, disconnect viewer (agent keeps running)
+    // If currently viewing a background /live stream, disconnect viewer (response keeps running)
     if (currentReader) {
         disconnectLiveStream();
     }
 
     // For auto-kill: existing sessions keep streaming in background, just clear the view
     resetView();
-    setState({ question: '', activeSessionId: null, viewingHistory: false });
+    setState({
+        question: '',
+        attachments: [],
+        attachmentError: '',
+        activeSessionId: null,
+        viewingHistory: false,
+    });
     discoverModels();
 }
 
@@ -1093,12 +1215,13 @@ export async function handlePageVisible() {
 
         if (session.status === 'running') {
             // Still running — reconnect
+            const events = session.events || [];
             setState({
-                events: session.events || [],
+                events: events,
                 viewingLiveSession: true,
                 isRunning: false,
-                finalAnswer: null,
-                status: { message: 'Reconnected to running agent...', type: 'loading' },
+                finalAnswer: answerFromEvents(events),
+                status: { message: 'Reconnected to running Deep Research...', type: 'loading' },
             });
             try {
                 await connectToLiveStream(sid, (session.events || []).length - 1);
@@ -1111,12 +1234,13 @@ export async function handlePageVisible() {
             }
         } else {
             // Session ended — show final state from DB
+            const events = session.events || [];
             setState({
-                events: session.events || [],
+                events: events,
                 viewingLiveSession: false,
                 isRunning: false,
                 isStopped: false,
-                finalAnswer: session.final_answer || null,
+                finalAnswer: answerFromEvents(events, session.final_answer || null),
                 viewingHistory: true,
                 status: {
                     message: `Session ${session.status}`,
@@ -1128,4 +1252,3 @@ export async function handlePageVisible() {
         console.error('Failed to refresh session:', e);
     }
 }
-

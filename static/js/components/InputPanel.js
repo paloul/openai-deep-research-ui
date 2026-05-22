@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import {
     useStore, setState,
     startStream, stopStream, newSession, setRunMode, discoverModels,
+    getReasoningEfforts, setSelectedModel, setSelectedReasoningEffort,
+    addAttachments, removeAttachment,
 } from '../state.js';
 import { StatusBar } from './StatusBar.js';
 
@@ -15,8 +17,14 @@ const MODE_LABELS = {
 const MODE_OPTIONS = [
     { value: 'background', label: 'Background (persistent)', desc: 'Survives browser close' },
     { value: 'auto-kill', label: 'Background (auto-kill)', desc: 'Dies when browser closes' },
-    { value: 'live', label: 'Live (leave = stop)', desc: 'Leaving stops agent' },
+    { value: 'live', label: 'Live (leave = stop)', desc: 'Leaving cancels the response' },
 ];
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function RunSplitButton({ runMode, disabled }) {
     const [open, setOpen] = useState(false);
@@ -73,6 +81,8 @@ function RunSplitButton({ runMode, disabled }) {
 
 export function InputPanel() {
     const store = useStore();
+    const reasoningEfforts = getReasoningEfforts(store.selectedModel);
+    const fileInputRef = useRef(null);
 
     function onSubmit(e) {
         e.preventDefault();
@@ -81,6 +91,7 @@ export function InputPanel() {
 
     // isRunning only locks UI in live mode. In background/auto-kill, user can always start new.
     const uiLocked = store.isRunning && store.runMode === 'live';
+    const attachmentsLocked = !!store.sessionId || store.viewingLiveSession || store.viewingHistory;
 
     return html`
         <div class="panel input-panel">
@@ -108,7 +119,7 @@ export function InputPanel() {
                     <select
                         id="modelSelect"
                         value=${store.selectedModel}
-                        onChange=${(e) => setState({ selectedModel: e.target.value })}
+                        onChange=${(e) => setSelectedModel(e.target.value)}
                     >
                         ${store.discoveredModels.length > 0 && html`
                             <optgroup label="Discovered">
@@ -133,6 +144,19 @@ export function InputPanel() {
                 </div>
 
                 <div class="form-group">
+                    <label for="reasoningEffortSelect">Reasoning Effort</label>
+                    <select
+                        id="reasoningEffortSelect"
+                        value=${store.selectedReasoningEffort}
+                        onChange=${(e) => setSelectedReasoningEffort(e.target.value)}
+                    >
+                        ${reasoningEfforts.map(effort => html`
+                            <option value=${effort} key=${effort}>${effort[0].toUpperCase()}${effort.slice(1)}</option>
+                        `)}
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label for="question">Question</label>
                     <textarea
                         id="question"
@@ -141,6 +165,55 @@ export function InputPanel() {
                         onInput=${(e) => setState({ question: e.target.value })}
                         required
                     />
+                </div>
+
+                <div class="form-group attachments-group">
+                    <label for="attachments">Attachments</label>
+                    <div class="attachment-dropzone">
+                        <input
+                            ref=${fileInputRef}
+                            id="attachments"
+                            class="attachment-input"
+                            type="file"
+                            multiple
+                            accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,text/plain,text/markdown,text/csv,application/json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            onChange=${(e) => {
+                                addAttachments(e.target.files);
+                                e.target.value = '';
+                            }}
+                        />
+                        <button
+                            type="button"
+                            class="btn btn-ghost attachment-add-btn"
+                            onClick=${() => fileInputRef.current?.click()}
+                            disabled=${uiLocked}
+                        >
+                            Add files
+                        </button>
+                        <span class="attachment-hint">Text, PDF, .doc, .docx · max 5 files · 25 MB each</span>
+                    </div>
+                    ${store.attachmentError && html`
+                        <div class="attachment-error">${store.attachmentError}</div>
+                    `}
+                    ${store.attachments.length > 0 && html`
+                        <div class="attachment-list">
+                            ${store.attachments.map((file, index) => html`
+                                <div class="attachment-item" key=${`${file.name}-${file.size}-${file.lastModified}`}>
+                                    <div class="attachment-meta">
+                                        <span class="attachment-name">${file.name}</span>
+                                        <span class="attachment-size">${formatFileSize(file.size)}</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="attachment-remove"
+                                        disabled=${attachmentsLocked}
+                                        onClick=${() => removeAttachment(index)}
+                                        aria-label=${`Remove ${file.name}`}
+                                    >\u2715</button>
+                                </div>
+                            `)}
+                        </div>
+                    `}
                 </div>
 
                 <div class="button-group">

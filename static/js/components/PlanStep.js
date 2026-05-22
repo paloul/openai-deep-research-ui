@@ -3,7 +3,7 @@ import { formatElapsedTime } from '../utils.js';
 import { Collapsible } from './Collapsible.js';
 
 export function PlanStep({ data }) {
-    const title = data.agent_name ? `Plan (${data.agent_name})` : 'Plan';
+    const title = 'Reasoning';
 
     return html`
         <div class="step-container plan-step">
@@ -13,9 +13,6 @@ export function PlanStep({ data }) {
             `}
             <div class="step-header plan-header">
                 <span>${title}</span>
-                ${data.agent_name && html`
-                    <span class="agent-badge">${data.agent_name}</span>
-                `}
             </div>
             ${(data.duration != null || data.token_usage) && html`
                 <${MetricsBar} data=${data} />

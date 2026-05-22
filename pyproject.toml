@@ -3,10 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["scripts"]
-
-[tool.setuptools.package-data]
-scripts = ["*.py"]
+py-modules = ["web_app", "config", "db"]
 
 [project]
 name = "open-deep-research"
@@ -29,38 +26,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "pathvalidate>=3.0.0",
-    "requests>=2.28.0",
-    "google-search-results>=2.4.0",
-    "smolagents==1.24.0",
-    "transformers>=4.30.0",
-    "mammoth>=0.3.0",
-    "markdownify>=0.11.0",
-    "pandas>=1.5.0",
-    "pdfminer.six>=20221105",
-    "python-pptx>=0.6.0",
-    "puremagic>=1.20",
-    "pydub>=0.25.0",
-    "beautifulsoup4>=4.11.0",
-    "youtube-transcript-api>=0.6.0",
-    "SpeechRecognition>=3.10.0",
-    "ffmpeg>=1.4",
-    "openai>=1.58.1",
-    "anthropic>=0.40.0",
-    "tiktoken>=0.5.0",
-    "tenacity>=8.0.0",
-    "tavily-python>=0.5.0",
-    "ddgs>=3.9.0",
+    "openai>=2.37.0",
     "flask>=2.3.0",
     "flask-cors>=4.0.0",
     "python-dotenv>=1.0.0",
     "gunicorn>=21.0.0",
-    "tavily-python>=0.5.0",
 ]
-
-[project.scripts]
-open-deep-research = "run:main"
-open-deep-research-gaia = "run_gaia:main"
 
 [project.optional-dependencies]
 dev = [
@@ -87,14 +58,7 @@ explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = [
-    "smolagents.*",
-    "serpapi",
-    "tavily",
-    "datasets",
-    "pandas",
-    "tqdm",
     "flask_cors",
-    "mcp.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"

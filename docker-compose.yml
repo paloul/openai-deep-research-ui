@@ -9,11 +9,8 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    volumes:
-      # Optional: Persist downloads
-      - ./downloads_folder:/app/downloads_folder
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5080/', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5080/', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

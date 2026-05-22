@@ -91,7 +91,7 @@ function App() {
                         <${OutputPanel} />
                     </div>
                     <footer>
-                        <p>Powered by smolagents</p>
+                        <p>Powered by OpenAI Deep Research</p>
                     </footer>
                 </div>
             </div>

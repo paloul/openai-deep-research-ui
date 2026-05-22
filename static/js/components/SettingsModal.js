@@ -104,66 +104,36 @@ function OverrideNumberInput({ label, value, onChange, placeholder, min, max }) 
 // ---------------------------------------------------------------------------
 
 function ModelProvidersList({ providers, onChange }) {
-    const list = providers || [];
-    const listId = 'provider-names-datalist';
+    const openaiProvider = (providers || []).find(p => (p.provider || '').toLowerCase() === 'openai')
+        || { provider: 'openai', api_key: '', base_url: '' };
 
-    function updateProvider(index, field, value) {
-        onChange(list.map((p, i) => i === index ? { ...p, [field]: value } : p));
+    function updateProvider(field, value) {
+        onChange([{ ...openaiProvider, provider: 'openai', [field]: value }]);
     }
 
     return html`
-        <datalist id=${listId}>
-            ${KNOWN_PROVIDERS.map(name => html`<option value=${name} key=${name} />`)}
-        </datalist>
-        ${list.map((p, i) => {
-            const isKnown = DEFAULT_ENDPOINT_PROVIDERS.has((p.provider || '').toLowerCase());
-            return html`
-                <div class="settings-provider-block" key=${i}>
-                    <div class="settings-provider-header">
-                        <div class="settings-field" style="flex:1">
-                            <label>Provider Name</label>
-                            <input
-                                type="text"
-                                class="settings-text-input"
-                                list=${listId}
-                                value=${p.provider}
-                                placeholder="e.g. openai, deepseek, anthropic"
-                                onInput=${(e) => updateProvider(i, 'provider', e.target.value)}
-                            />
-                        </div>
-                        <button
-                            class="btn btn-ghost btn-sm"
-                            onClick=${() => onChange(list.filter((_, j) => j !== i))}
-                            title="Remove provider"
-                            style="margin-top: 1.4em"
-                        >\u2715</button>
-                    </div>
-                    <${SecretInput}
-                        label="API Key"
-                        value=${p.api_key || ''}
-                        placeholder="sk-..."
-                        onChange=${(v) => updateProvider(i, 'api_key', v)}
-                    />
-                    <div class="settings-field">
-                        <label>
-                            Base URL
-                            ${isKnown ? html`<span class="settings-field-note">(not required for ${p.provider})</span>` : ''}
-                        </label>
-                        <input
-                            type="text"
-                            class="settings-text-input"
-                            value=${p.base_url || ''}
-                            placeholder=${isKnown ? `Uses ${p.provider} default endpoint` : 'https://api.example.com/v1'}
-                            onInput=${(e) => updateProvider(i, 'base_url', e.target.value)}
-                        />
-                    </div>
-                </div>
-            `;
-        })}
-        <button
-            class="btn btn-ghost btn-sm"
-            onClick=${() => onChange([...list, { provider: '', api_key: '', base_url: '' }])}
-        >+ Add Provider</button>
+        <div class="settings-provider-block">
+            <div class="settings-field">
+                <label>Provider</label>
+                <input type="text" class="settings-text-input" value="openai" disabled />
+            </div>
+            <${SecretInput}
+                label="OpenAI API Key"
+                value=${openaiProvider.api_key || ''}
+                placeholder="sk-..."
+                onChange=${(v) => updateProvider('api_key', v)}
+            />
+            <div class="settings-field">
+                <label>Base URL <span class="settings-field-note">(optional)</span></label>
+                <input
+                    type="text"
+                    class="settings-text-input"
+                    value=${openaiProvider.base_url || ''}
+                    placeholder="Uses OpenAI default endpoint"
+                    onInput=${(e) => updateProvider('base_url', e.target.value)}
+                />
+            </div>
+        </div>
     `;
 }
 
@@ -228,7 +198,6 @@ function SearchProvidersList({ providers, onChange }) {
 // ---------------------------------------------------------------------------
 
 function ClientSettingsForm({ draft, onChange }) {
-    const [advancedOpen, setAdvancedOpen] = useState(false);
     const theme = useStore(s => s.theme);
     const runMode = useStore(s => s.runMode);
 
@@ -272,30 +241,11 @@ function ClientSettingsForm({ draft, onChange }) {
 
     return html`
         <div class="settings-section">
-            <h3>Model Providers</h3>
-            <p class="settings-hint">Stored in your browser only. Provider name must match the model ID prefix (e.g. "deepseek" for "deepseek/deepseek-chat", "openai" for GPT models).</p>
+            <h3>OpenAI</h3>
+            <p class="settings-hint">Stored in your browser only. Deep Research runs use the OpenAI Responses API.</p>
             <${ModelProvidersList}
                 providers=${draft.model?.providers}
                 onChange=${updateModelProviders}
-            />
-        </div>
-
-        <div class="settings-section">
-            <h3>Search Providers</h3>
-            <p class="settings-hint">Stored in your browser only.</p>
-            <${SearchProvidersList}
-                providers=${draft.search?.providers}
-                onChange=${updateSearchProviders}
-            />
-        </div>
-
-        <div class="settings-section">
-            <h3>Other Keys</h3>
-            <${SecretInput}
-                label="HuggingFace Token"
-                value=${g('other_keys', 'hf_token') || ''}
-                placeholder="hf_..."
-                onChange=${(v) => updateOverride('other_keys', 'hf_token', v)}
             />
         </div>
 
@@ -319,168 +269,65 @@ function ClientSettingsForm({ draft, onChange }) {
         </div>
 
         <div class="settings-section">
-            <button
-                class="btn btn-ghost settings-advanced-toggle"
-                onClick=${() => setAdvancedOpen(!advancedOpen)}
-            >
-                ${advancedOpen ? '\u25BC' : '\u25B6'} Advanced Overrides
-            </button>
+            <h3>Deep Research</h3>
             <p class="settings-hint">Override server defaults for this browser. Leave empty to use server values.</p>
-
-            ${advancedOpen && html`
-                <div class="settings-advanced">
-                    <h4>Agent</h4>
-                    <${OverrideNumberInput} label="Search Agent Max Steps"
-                        value=${g('agent', 'search_agent_max_steps')}
-                        onChange=${(v) => updateOverride('agent', 'search_agent_max_steps', v)}
-                        min=${1} max=${100} />
-                    <${OverrideNumberInput} label="Manager Agent Max Steps"
-                        value=${g('agent', 'manager_agent_max_steps')}
-                        onChange=${(v) => updateOverride('agent', 'manager_agent_max_steps', v)}
-                        min=${1} max=${100} />
-                    <${OverrideNumberInput} label="Planning Interval"
-                        value=${g('agent', 'planning_interval')}
-                        onChange=${(v) => updateOverride('agent', 'planning_interval', v)}
-                        min=${1} max=${50} />
-
-                    <h4>Model</h4>
-                    <${OverrideNumberInput} label="Max Completion Tokens"
-                        value=${g('model', 'max_completion_tokens')}
-                        onChange=${(v) => updateOverride('model', 'max_completion_tokens', v)}
-                        min=${256} max=${65536} />
-                    <div class="settings-field">
-                        <label>Reasoning Effort (o1 only)</label>
-                        <select
-                            value=${g('model', 'reasoning_effort') || ''}
-                            onChange=${(e) => updateOverride('model', 'reasoning_effort', e.target.value || undefined)}
-                        >
-                            <option value="">server default</option>
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                        </select>
-                    </div>
-                    <${OverrideNumberInput} label="Retry Max Attempts"
-                        value=${g('model', 'retry_max_attempts')}
-                        onChange=${(v) => updateOverride('model', 'retry_max_attempts', v)}
-                        min=${1} max=${20} />
-                    <${OverrideNumberInput} label="Retry Wait Seconds"
-                        value=${g('model', 'retry_wait_seconds')}
-                        onChange=${(v) => updateOverride('model', 'retry_wait_seconds', v)}
-                        min=${1} max=${120} />
-
-                    <h4>Search</h4>
-                    <${OverrideNumberInput} label="Max Results"
-                        value=${g('search', 'max_results')}
-                        onChange=${(v) => updateOverride('search', 'max_results', v)}
-                        min=${1} max=${50} />
-
-                    <h4>Browser</h4>
-                    <${OverrideNumberInput} label="Viewport Size (chars)"
-                        value=${g('browser', 'viewport_size')}
-                        onChange=${(v) => updateOverride('browser', 'viewport_size', v)}
-                        min=${1024} max=${20480} />
-                    <${OverrideNumberInput} label="Request Timeout (seconds)"
-                        value=${g('browser', 'request_timeout')}
-                        onChange=${(v) => updateOverride('browser', 'request_timeout', v)}
-                        min=${10} max=${600} />
-
-                    <h4>Limits</h4>
-                    <${OverrideNumberInput} label="Text Limit (chars)"
-                        value=${g('limits', 'text_limit')}
-                        onChange=${(v) => updateOverride('limits', 'text_limit', v)}
-                        min=${1000} max=${500000} />
-                    <${OverrideNumberInput} label="Max Field Length (chars)"
-                        value=${g('limits', 'max_field_length')}
-                        onChange=${(v) => updateOverride('limits', 'max_field_length', v)}
-                        min=${1000} max=${200000} />
-
-                    <button class="btn btn-ghost btn-sm" onClick=${() => onChange({})} style="margin-top: var(--sp-2)">
-                        Reset all overrides
-                    </button>
-                </div>
-            `}
+            <${OverrideNumberInput} label="Max Output Tokens"
+                value=${g('model', 'max_completion_tokens')}
+                onChange=${(v) => updateOverride('model', 'max_completion_tokens', v)}
+                min=${256} max=${65536} />
+            <div class="settings-field">
+                <label>Reasoning Effort</label>
+                <select
+                    value=${g('model', 'reasoning_effort') || 'medium'}
+                    onChange=${(e) => updateOverride('model', 'reasoning_effort', e.target.value || undefined)}
+                >
+                    <option value="medium">Medium</option>
+                </select>
+            </div>
+            <button class="btn btn-ghost btn-sm" onClick=${() => onChange({})} style="margin-top: var(--sp-2)">
+                Reset all overrides
+            </button>
         </div>
     `;
 }
 
 function ServerConfigForm({ config, onChange }) {
-    const [newModel, setNewModel] = useState({ id: '', name: '', description: '' });
-
     function update(section, key, value) {
         onChange({ ...config, [section]: { ...config[section], [key]: value } });
     }
 
-    function addModel() {
-        if (!newModel.id || !newModel.name) return;
-        onChange({ ...config, models: [...config.models, { ...newModel }] });
-        setNewModel({ id: '', name: '', description: '' });
-    }
-
-    function removeModel(index) {
-        onChange({ ...config, models: config.models.filter((_, i) => i !== index) });
-    }
-
     return html`
-        <div class="settings-section">
-            <h3>Agent</h3>
-            <${NumberInput} label="Search Agent Max Steps"
-                value=${config.agent.search_agent_max_steps}
-                onChange=${(v) => update('agent', 'search_agent_max_steps', v)}
-                min=${1} max=${100} />
-            <${NumberInput} label="Manager Agent Max Steps"
-                value=${config.agent.manager_agent_max_steps}
-                onChange=${(v) => update('agent', 'manager_agent_max_steps', v)}
-                min=${1} max=${100} />
-            <${NumberInput} label="Planning Interval"
-                value=${config.agent.planning_interval}
-                onChange=${(v) => update('agent', 'planning_interval', v)}
-                min=${1} max=${50} />
-            <${NumberInput} label="Verbosity Level"
-                value=${config.agent.verbosity_level}
-                onChange=${(v) => update('agent', 'verbosity_level', v)}
-                min=${0} max=${5} />
-        </div>
-
         <div class="settings-section">
             <h3>Model</h3>
             <div class="settings-field">
                 <label>Default Model ID</label>
-                <input
-                    type="text"
-                    class="settings-text-input"
+                <select
                     value=${config.model.default_model_id}
                     onInput=${(e) => update('model', 'default_model_id', e.target.value)}
-                />
+                    onChange=${(e) => update('model', 'default_model_id', e.target.value)}
+                >
+                    <option value="o3-deep-research">o3-deep-research</option>
+                    <option value="o4-mini-deep-research">o4-mini-deep-research</option>
+                </select>
             </div>
-            <${NumberInput} label="Max Completion Tokens"
+            <${NumberInput} label="Max Output Tokens"
                 value=${config.model.max_completion_tokens}
                 onChange=${(v) => update('model', 'max_completion_tokens', v)}
                 min=${256} max=${65536} />
             <div class="settings-field">
-                <label>Reasoning Effort (o1 only)</label>
+                <label>Reasoning Effort</label>
                 <select
-                    value=${config.model.reasoning_effort}
+                    value=${config.model.reasoning_effort || 'medium'}
                     onChange=${(e) => update('model', 'reasoning_effort', e.target.value)}
                 >
-                    <option value="low">Low</option>
                     <option value="medium">Medium</option>
-                    <option value="high">High</option>
                 </select>
             </div>
-            <${NumberInput} label="Retry Max Attempts"
-                value=${config.model.retry_max_attempts}
-                onChange=${(v) => update('model', 'retry_max_attempts', v)}
-                min=${1} max=${20} />
-            <${NumberInput} label="Retry Wait Seconds"
-                value=${config.model.retry_wait_seconds}
-                onChange=${(v) => update('model', 'retry_wait_seconds', v)}
-                min=${1} max=${120} />
         </div>
 
         <div class="settings-section">
-            <h3>Model Providers</h3>
-            <p class="settings-hint">Shared provider keys. Masked values shown — enter new value to replace.</p>
+            <h3>OpenAI</h3>
+            <p class="settings-hint">Shared OpenAI key. Masked values shown; enter a new value to replace.</p>
             <${ModelProvidersList}
                 providers=${config.model?.providers || []}
                 onChange=${(v) => update('model', 'providers', v)}
@@ -488,87 +335,17 @@ function ServerConfigForm({ config, onChange }) {
         </div>
 
         <div class="settings-section">
-            <h3>Search</h3>
-            <${SearchProvidersList}
-                providers=${config.search?.providers || []}
-                onChange=${(v) => onChange({ ...config, search: { ...config.search, providers: v || [] } })}
-            />
-            <${NumberInput} label="Max Results"
-                value=${config.search.max_results}
-                onChange=${(v) => update('search', 'max_results', v)}
-                min=${1} max=${50} />
-        </div>
-
-        <div class="settings-section">
-            <h3>Other Keys</h3>
-            <p class="settings-hint">Masked values shown — enter new value to replace.</p>
-            <${SecretInput}
-                label="HuggingFace Token"
-                value=${config.other_keys?.hf_token || ''}
-                placeholder="hf_..."
-                onChange=${(v) => onChange({ ...config, other_keys: { ...config.other_keys, hf_token: v } })}
-            />
-        </div>
-
-        <div class="settings-section">
-            <h3>Browser</h3>
-            <${NumberInput} label="Viewport Size (chars)"
-                value=${config.browser.viewport_size}
-                onChange=${(v) => update('browser', 'viewport_size', v)}
-                min=${1024} max=${20480} />
-            <${NumberInput} label="Request Timeout (seconds)"
-                value=${config.browser.request_timeout}
-                onChange=${(v) => update('browser', 'request_timeout', v)}
-                min=${10} max=${600} />
-        </div>
-
-        <div class="settings-section">
-            <h3>Limits</h3>
-            <${NumberInput} label="Text Limit (chars)"
-                value=${config.limits.text_limit}
-                onChange=${(v) => update('limits', 'text_limit', v)}
-                min=${1000} max=${500000} />
-            <${NumberInput} label="Max Field Length (chars)"
-                value=${config.limits.max_field_length}
-                onChange=${(v) => update('limits', 'max_field_length', v)}
-                min=${1000} max=${200000} />
-        </div>
-
-        <div class="settings-section">
             <h3>Available Models</h3>
             <div class="settings-models-list">
-                ${config.models.map((m, i) => html`
+                ${[
+                    { id: 'o3-deep-research', name: 'OpenAI o3 Deep Research' },
+                    { id: 'o4-mini-deep-research', name: 'OpenAI o4-mini Deep Research' },
+                ].map((m) => html`
                     <div class="settings-model-item" key=${m.id}>
                         <span class="settings-model-id">${m.id}</span>
                         <span class="settings-model-name">${m.name}</span>
-                        <button
-                            class="btn btn-ghost btn-sm"
-                            onClick=${() => removeModel(i)}
-                            title="Remove model"
-                        >\u2715</button>
                     </div>
                 `)}
-            </div>
-            <div class="settings-add-model">
-                <input
-                    type="text"
-                    placeholder="Model ID"
-                    value=${newModel.id}
-                    onInput=${(e) => setNewModel({ ...newModel, id: e.target.value })}
-                />
-                <input
-                    type="text"
-                    placeholder="Display Name"
-                    value=${newModel.name}
-                    onInput=${(e) => setNewModel({ ...newModel, name: e.target.value })}
-                />
-                <input
-                    type="text"
-                    placeholder="Description"
-                    value=${newModel.description}
-                    onInput=${(e) => setNewModel({ ...newModel, description: e.target.value })}
-                />
-                <button class="btn btn-ghost btn-sm" onClick=${addModel}>+ Add</button>
             </div>
         </div>
     `;

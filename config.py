@@ -14,110 +14,28 @@ CONFIG_PATH = CONFIG_DIR / "odr-config.json"
 EXAMPLE_PATH = CONFIG_DIR / "odr-config.example.json"
 
 DEFAULTS = {
-    "agent": {
-        "search_agent_max_steps": 20,
-        "manager_agent_max_steps": 12,
-        "planning_interval": 4,
-        "verbosity_level": 2,
-    },
     "model": {
         "providers": [
             {"provider": "openai", "api_key": "", "base_url": ""},
-            {"provider": "deepseek", "api_key": "", "base_url": ""},
-            {"provider": "anthropic", "api_key": "", "base_url": ""},
         ],
-        "default_model_id": "o1",
+        "default_model_id": "o3-deep-research",
         "max_completion_tokens": 32768,
-        "reasoning_effort": "high",
-        "retry_max_attempts": 5,
-        "retry_wait_seconds": 30,
-    },
-    "search": {
-        # Order matters: first provider is primary, rest are tried as fallbacks in list order.
-        "providers": [
-            {"provider": "DDGS", "key": ""},
-            {"provider": "TAVILY", "key": ""},
-            {"provider": "SERPAPI", "key": ""},
-            {"provider": "META_SOTA", "key": ""},
-            {"provider": "BOCHA", "key": ""},
-        ],
-        "max_results": 10,
-    },
-    "browser": {
-        "viewport_size": 5120,
-        "request_timeout": 300,
-    },
-    "limits": {
-        "text_limit": 100000,
-        "max_field_length": 50000,
-    },
-    "compaction": {
-        # Two-layer LLM-based observation compaction. See scripts/compaction.py.
-        # Token counts use tiktoken (cl100k_base fallback for non-OpenAI models).
-        "enabled": True,
-        # null = use the agent's main model. Override to a cheaper model id
-        # (e.g. "deepseek-chat") to reduce summarization cost/latency.
-        "summarizer_model_id": None,
-        # Layer 1: per-step summary
-        "summary_threshold_tokens": 1000,
-        "summary_max_tokens": 600,
-        "summary_input_cap_tokens": 6000,
-        # Layer 2: plan-boundary gap consolidation
-        "plan_keep_back": 3,
-        "gap_summary_max_tokens": 500,
-        # On compaction LLM failure, retry this many times before falling back
-        # to head+tail truncation. Default 10 mirrors Claude Code's budget.
-        "max_retries": 10,
-    },
-    "other_keys": {
-        "hf_token": "",
+        "reasoning_effort": "medium",
     },
     "models": [
-        {"id": "o1", "name": "OpenAI o1", "description": "Advanced reasoning model"},
         {
-            "id": "gpt-4-turbo",
-            "name": "GPT-4 Turbo",
-            "description": "Fast and powerful",
+            "id": "o3-deep-research",
+            "name": "OpenAI o3 Deep Research",
+            "description": "OpenAI Deep Research model for thorough research tasks",
+            "reasoning_efforts": ["medium"],
+            "default_reasoning_effort": "medium",
         },
         {
-            "id": "gpt-4.1-mini",
-            "name": "GPT-4.1 Mini",
-            "description": "Lightweight and efficient",
-        },
-        {
-            "id": "gpt-4.1-nano",
-            "name": "GPT-4.1 Nano",
-            "description": "Ultra-lightweight model",
-        },
-        {
-            "id": "gpt-4o-mini",
-            "name": "GPT-4o Mini",
-            "description": "Efficient and cost-effective",
-        },
-        {
-            "id": "deepseek/deepseek-chat",
-            "name": "DeepSeek Chat",
-            "description": "Fast chat model from DeepSeek",
-        },
-        {
-            "id": "deepseek/deepseek-reasoner",
-            "name": "DeepSeek Reasoner",
-            "description": "Reasoning model from DeepSeek",
-        },
-        {
-            "id": "ollama/mistral",
-            "name": "Ollama Mistral",
-            "description": "Local model",
-        },
-        {
-            "id": "claude-sonnet-4-20250514",
-            "name": "Claude Sonnet 4",
-            "description": "Anthropic model",
-        },
-        {
-            "id": "claude-3-5-haiku-20241022",
-            "name": "Claude 3.5 Haiku",
-            "description": "Fast Anthropic model",
+            "id": "o4-mini-deep-research",
+            "name": "OpenAI o4-mini Deep Research",
+            "description": "Faster, lower-cost OpenAI Deep Research model",
+            "reasoning_efforts": ["medium"],
+            "default_reasoning_effort": "medium",
         },
     ],
 }
@@ -162,7 +80,7 @@ def save_config(data):
 
 def get_config(key_path, config=None):
     """Access config value via dot-notation path.
-    e.g. get_config("agent.search_agent_max_steps")
+    e.g. get_config("model.default_model_id")
     """
     if config is None:
         config = load_config()
