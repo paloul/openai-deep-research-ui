@@ -1328,4 +1328,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(f"Starting web UI at http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    app.run(host=args.host, port=args.port, debug=args.debug, ssl_context='adhoc')
