@@ -11,9 +11,6 @@ version = "1.2.0"
 description = ""
 readme = "README.md"
 requires-python = ">=3.8"
-authors = [
-    {name = "borui", email = "borui_cai@qq.com"},
-]
 license = {text = "Apache-2.0"}
 keywords = []
 classifiers = [
